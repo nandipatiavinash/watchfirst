@@ -1,0 +1,523 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Custom subscription fields
+  subscriptionTier String @default("free") // "free" | "premium" | "pro"
+
+  accounts      Account[]
+  sessions      Session[]
+  profile       Profile?
+  watchHistory  WatchHistory[]
+  favorites     Favorite[]
+  savedLists    SavedList[]
+  feedback      Feedback[]
+  recommendations Recommendation[]
+  analyticsEvents AnalyticsEvent[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  providerId        String
+  accountId         String
+  accessToken       String?
+  refreshToken      String?
+  accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope             String?
+  idToken           String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// ─── Profile & Preferences ───────────────────────────────────────────────────
+
+model Profile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  onboardingDone   Boolean  @default(false)
+  preferredLangs   String[] @default([])
+  preferredPlatforms String[] @default([])
+  favoriteGenreIds String[] @default([])
+  favoriteActorIds String[] @default([])
+  favoriteDirectorIds String[] @default([])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("profiles")
+}
+
+// ─── Content ─────────────────────────────────────────────────────────────────
+
+model Genre {
+  id       Int    @id
+  name     String @unique
+  tmdbId   Int?   @unique
+
+  movies   MovieGenre[]
+  tvShows  TvShowGenre[]
+
+  @@map("genres")
+}
+
+model Platform {
+  id          String @id @default(cuid())
+  name        String @unique
+  slug        String @unique
+  logoUrl     String?
+  color       String?
+
+  providers   StreamingProvider[]
+
+  @@map("platforms")
+}
+
+model StreamingProvider {
+  id          String   @id @default(cuid())
+  platformId  String
+  region      String   @default("US")
+  tmdbId      Int?
+
+  platform    Platform @relation(fields: [platformId], references: [id])
+  movieLinks  MovieProvider[]
+  tvShowLinks TvShowProvider[]
+
+  @@unique([platformId, region])
+  @@map("streaming_providers")
+}
+
+model Actor {
+  id       String @id @default(cuid())
+  name     String
+  tmdbId   Int?   @unique
+  imageUrl String?
+
+  movies   MovieActor[]
+  tvShows  TvShowActor[]
+
+  @@index([name])
+  @@map("actors")
+}
+
+model Director {
+  id       String @id @default(cuid())
+  name     String
+  tmdbId   Int?   @unique
+  imageUrl String?
+
+  movies   MovieDirector[]
+  tvShows  TvShowDirector[]
+
+  @@index([name])
+  @@map("directors")
+}
+
+model Movie {
+  id            String   @id @default(cuid())
+  tmdbId        Int?     @unique
+  title         String
+  overview      String?
+  posterPath    String?
+  backdropPath  String?
+  releaseDate   DateTime?
+  runtimeMins   Int?
+  language      String   @default("en")
+  rating        Float?
+  popularity    Float?   @default(0)
+  adult         Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  genres        MovieGenre[]
+  actors        MovieActor[]
+  directors     MovieDirector[]
+  providers     MovieProvider[]
+  watchHistory  WatchHistory[]
+  favorites     Favorite[]
+  savedItems    SavedListItem[]
+  feedback      Feedback[]
+  recommendations RecommendationItem[]
+
+  @@index([tmdbId])
+  @@index([language])
+  @@index([rating])
+  @@index([popularity])
+  @@map("movies")
+}
+
+model MovieGenre {
+  movieId  String
+  genreId  Int
+  movie    Movie  @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  genre    Genre  @relation(fields: [genreId], references: [id], onDelete: Cascade)
+  @@id([movieId, genreId])
+  @@map("movie_genres")
+}
+
+model MovieActor {
+  movieId String
+  actorId String
+  order   Int    @default(0)
+  movie   Movie  @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  actor   Actor  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  @@id([movieId, actorId])
+  @@map("movie_actors")
+}
+
+model MovieDirector {
+  movieId    String
+  directorId String
+  movie      Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  director   Director @relation(fields: [directorId], references: [id], onDelete: Cascade)
+  @@id([movieId, directorId])
+  @@map("movie_directors")
+}
+
+model MovieProvider {
+  movieId    String
+  providerId String
+  type       String   @default("flatrate") // flatrate | rent | buy
+  movie      Movie              @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  provider   StreamingProvider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  @@id([movieId, providerId, type])
+  @@map("movie_providers")
+}
+
+model TvShow {
+  id            String   @id @default(cuid())
+  tmdbId        Int?     @unique
+  title         String
+  overview      String?
+  posterPath    String?
+  backdropPath  String?
+  firstAirDate  DateTime?
+  lastAirDate   DateTime?
+  episodeRuntime Int?
+  language      String   @default("en")
+  rating        Float?
+  popularity    Float?   @default(0)
+  status        String?  // Returning Series | Ended | Canceled
+  totalSeasons  Int?
+  totalEpisodes Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  genres        TvShowGenre[]
+  actors        TvShowActor[]
+  directors     TvShowDirector[]
+  providers     TvShowProvider[]
+  episodes      Episode[]
+  watchHistory  WatchHistory[]
+  favorites     Favorite[]
+  savedItems    SavedListItem[]
+  feedback      Feedback[]
+  recommendations RecommendationItem[]
+
+  @@index([tmdbId])
+  @@index([language])
+  @@index([rating])
+  @@map("tv_shows")
+}
+
+model TvShowGenre {
+  tvShowId String
+  genreId  Int
+  tvShow   TvShow @relation(fields: [tvShowId], references: [id], onDelete: Cascade)
+  genre    Genre  @relation(fields: [genreId], references: [id], onDelete: Cascade)
+  @@id([tvShowId, genreId])
+  @@map("tv_show_genres")
+}
+
+model TvShowActor {
+  tvShowId String
+  actorId  String
+  order    Int    @default(0)
+  tvShow   TvShow @relation(fields: [tvShowId], references: [id], onDelete: Cascade)
+  actor    Actor  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  @@id([tvShowId, actorId])
+  @@map("tv_show_actors")
+}
+
+model TvShowDirector {
+  tvShowId   String
+  directorId String
+  tvShow     TvShow   @relation(fields: [tvShowId], references: [id], onDelete: Cascade)
+  director   Director @relation(fields: [directorId], references: [id], onDelete: Cascade)
+  @@id([tvShowId, directorId])
+  @@map("tv_show_directors")
+}
+
+model TvShowProvider {
+  tvShowId   String
+  providerId String
+  type       String   @default("flatrate")
+  tvShow     TvShow             @relation(fields: [tvShowId], references: [id], onDelete: Cascade)
+  provider   StreamingProvider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  @@id([tvShowId, providerId, type])
+  @@map("tv_show_providers")
+}
+
+model Episode {
+  id            String   @id @default(cuid())
+  tvShowId      String
+  tmdbId        Int?     @unique
+  season        Int
+  episode       Int
+  title         String?
+  overview      String?
+  stillPath     String?
+  airDate       DateTime?
+  runtimeMins   Int?
+  rating        Float?
+  createdAt     DateTime @default(now())
+
+  tvShow        TvShow   @relation(fields: [tvShowId], references: [id], onDelete: Cascade)
+  watchHistory  WatchHistory[]
+
+  @@unique([tvShowId, season, episode])
+  @@index([tvShowId])
+  @@map("episodes")
+}
+
+// ─── User Activity ────────────────────────────────────────────────────────────
+
+model WatchHistory {
+  id         String   @id @default(cuid())
+  userId     String
+  movieId    String?
+  tvShowId   String?
+  episodeId  String?
+  youtubeVideoId String?
+  watchedAt  DateTime @default(now())
+  completed  Boolean  @default(false)
+  progressPct Int?    // 0-100
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie      Movie?   @relation(fields: [movieId], references: [id], onDelete: SetNull)
+  tvShow     TvShow?  @relation(fields: [tvShowId], references: [id], onDelete: SetNull)
+  episode    Episode? @relation(fields: [episodeId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([userId, watchedAt])
+  @@map("watch_history")
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  movieId   String?
+  tvShowId  String?
+  youtubeVideoId String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie     Movie?   @relation(fields: [movieId], references: [id], onDelete: SetNull)
+  tvShow    TvShow?  @relation(fields: [tvShowId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, movieId])
+  @@unique([userId, tvShowId])
+  @@unique([userId, youtubeVideoId])
+  @@index([userId])
+  @@map("favorites")
+}
+
+model SavedList {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items       SavedListItem[]
+
+  @@index([userId])
+  @@map("saved_lists")
+}
+
+model SavedListItem {
+  id          String    @id @default(cuid())
+  savedListId String
+  movieId     String?
+  tvShowId    String?
+  youtubeVideoId String?
+  addedAt     DateTime  @default(now())
+
+  savedList   SavedList @relation(fields: [savedListId], references: [id], onDelete: Cascade)
+  movie       Movie?    @relation(fields: [movieId], references: [id], onDelete: SetNull)
+  tvShow      TvShow?   @relation(fields: [tvShowId], references: [id], onDelete: SetNull)
+
+  @@index([savedListId])
+  @@map("saved_list_items")
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String
+  movieId   String?
+  tvShowId  String?
+  youtubeVideoId String?
+  score     Int      // 1-5
+  tags      String[] @default([]) // "too long", "wrong mood", etc.
+  note      String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie     Movie?   @relation(fields: [movieId], references: [id], onDelete: SetNull)
+  tvShow    TvShow?  @relation(fields: [tvShowId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("feedback")
+}
+
+// ─── Recommendations ─────────────────────────────────────────────────────────
+
+model Recommendation {
+  id          String   @id @default(cuid())
+  userId      String
+  sessionHash String?  // hash of input params for caching
+  mood        String?
+  mealMode    String?
+  timeAvail   Int?     // minutes
+  platform    String?
+  language    String?
+  providerUsed String? // "mock" | "openai" | "gemini"
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items       RecommendationItem[]
+  logs        RecommendationLog[]
+
+  @@index([userId])
+  @@index([sessionHash])
+  @@map("recommendations")
+}
+
+model RecommendationItem {
+  id               String         @id @default(cuid())
+  recommendationId String
+  movieId          String?
+  tvShowId         String?
+  rank             Int
+  score            Float
+  scoreBreakdown   Json?          // { durationMatch: 0.9, moodMatch: 0.8, ... }
+  explanation      String?
+
+  recommendation   Recommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+  movie            Movie?         @relation(fields: [movieId], references: [id], onDelete: SetNull)
+  tvShow           TvShow?        @relation(fields: [tvShowId], references: [id], onDelete: SetNull)
+
+  @@index([recommendationId])
+  @@map("recommendation_items")
+}
+
+model RecommendationLog {
+  id               String         @id @default(cuid())
+  recommendationId String
+  stage            String         // "metadata_filter" | "scoring" | "ai_ranking"
+  input            Json?
+  output           Json?
+  durationMs       Int?
+  createdAt        DateTime       @default(now())
+
+  recommendation   Recommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+
+  @@index([recommendationId])
+  @@map("recommendation_logs")
+}
+
+// ─── Admin & Analytics ───────────────────────────────────────────────────────
+
+model AdminUser {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  role      String   @default("admin") // admin | superadmin
+  createdAt DateTime @default(now())
+
+  @@map("admin_users")
+}
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  enabled     Boolean  @default(false)
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("feature_flags")
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  event     String
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([event])
+  @@index([createdAt])
+  @@map("analytics_events")
+}

@@ -1,0 +1,52 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     watchfast
+      POSTGRES_PASSWORD: watchfast
+      POSTGRES_DB:       watchfast
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U watchfast']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL:            postgresql://watchfast:watchfast@db:5432/watchfast
+      BETTER_AUTH_SECRET:      ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL:         ${BETTER_AUTH_URL:-http://localhost:3000}
+      GOOGLE_CLIENT_ID:        ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET:    ${GOOGLE_CLIENT_SECRET}
+      TMDB_READ_ACCESS_TOKEN:  ${TMDB_READ_ACCESS_TOKEN}
+      YOUTUBE_API_KEY:         ${YOUTUBE_API_KEY}
+      NEXT_PUBLIC_APP_URL:     ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      REDIS_URL:               redis://redis:6379
+
+volumes:
+  pgdata:
